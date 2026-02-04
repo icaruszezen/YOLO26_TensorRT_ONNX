@@ -1,0 +1,60 @@
+# === CMake 生成 ===
+build/
+build_*/
+out/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# === Visual Studio / MSVC ===
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.vcxproj.user
+*.vcxproj.filters
+x64/
+x86/
+Release/
+Debug/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.idb
+*.ipch
+*.tlog
+*.lastbuildstate
+*.recipe
+*.iobj
+*.ipdb
+# 可执行与库（构建产物在 build*/ 下已被整体忽略，此处仅作备用）
+# *.dll
+# *.exe
+# *.lib
+
+# === 依赖环境（depends 目录）===
+depends/
+
+# === 系统与编辑器 ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# === 其他 ===
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
