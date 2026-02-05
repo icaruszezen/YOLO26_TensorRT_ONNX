@@ -1,4 +1,4 @@
-# YoloDet26
+# Yolo26_Detect_CPP_TensorRT_ONNX
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
 [![CMake](https://img.shields.io/badge/CMake-3.17+-green.svg)](https://cmake.org)
