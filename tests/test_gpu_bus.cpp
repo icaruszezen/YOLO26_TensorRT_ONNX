@@ -1,6 +1,6 @@
-// CPU 测试：使用 yolo26n.onnx 对 bus.jpg 做一次推理并输出检测结果。
-// 用法: test_cpu_bus [model_path] [image_path]
-// 默认: depends/models/yolo26n.onnx, depends/models/bus.jpg
+// GPU 测试：使用 yolo26n.plan 对 bus.jpg 做一次推理并输出检测结果。
+// 用法: test_gpu_bus [model_path] [image_path]
+// 默认: depends/models/yolo26n.plan, depends/models/bus.jpg
 //       先按当前工作目录查找，若不存在则按可执行文件所在目录上溯到项目根再找 depends/models
 
 #include "YoloDet26Api.h"
@@ -74,7 +74,7 @@ static void drawResults(cv::Mat& image, const YoloDetResultEx& res)
 
 int main(int argc, char* argv[])
 {
-	std::string modelPath = "depends/models/yolo26n.onnx";
+	std::string modelPath = "depends/models/yolo26n.plan";
 	std::string imagePath = "depends/models/bus.jpg";
 	if (argc >= 2)
 		modelPath = argv[1];
@@ -90,7 +90,7 @@ int main(int argc, char* argv[])
 	if (argc < 2) {
 		std::string exeDir = getExeDir();
 		if (!fileExists(modelPath))
-			modelPath = resolveDependsPath("depends/models/yolo26n.onnx", exeDir);
+			modelPath = resolveDependsPath("depends/models/yolo26n.plan", exeDir);
 	}
 
 	cv::Mat image = cv::imread(imagePath);
@@ -127,7 +127,7 @@ int main(int argc, char* argv[])
 
 	// 计算平均耗时
 	double avg_time = std::accumulate(infer_times.begin(), infer_times.end(), 0.0) / infer_times.size();
-
+	
 	std::cout << "\n=== Inference Summary ===" << std::endl;
 	std::cout << "Total iterations: " << loop_count << std::endl;
 	std::cout << "Average time: " << std::fixed << std::setprecision(3) << avg_time << " ms" << std::endl;
@@ -135,7 +135,7 @@ int main(int argc, char* argv[])
 	std::cout << "Max time: " << *std::max_element(infer_times.begin(), infer_times.end()) << " ms" << std::endl;
 
 	std::cout << "\nDetections (last iteration): " << res.num
-		<< ", backend: " << (res.backend == YoloDetBackend::CPU ? "CPU" : "GPU") << std::endl;
+		<< ", backend: " << (res.backend == YoloDetBackend::GPU ? "GPU" : "CPU") << std::endl;
 	for (int i = 0; i < res.num; ++i) {
 		float score = (i < static_cast<int>(res.scores.size())) ? res.scores[i] : 0.f;
 		int cls = (i < static_cast<int>(res.classes.size())) ? res.classes[i] : -1;
@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
 
 	cv::Mat outImage = image.clone();
 	drawResults(outImage, res);
-	const std::string outPath = "bus_out.jpg";
+	const std::string outPath = "bus_out_gpu.jpg";
 	if (cv::imwrite(outPath, outImage))
 		std::cout << "Saved visualization to " << outPath << std::endl;
 	else

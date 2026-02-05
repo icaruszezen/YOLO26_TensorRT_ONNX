@@ -236,3 +236,38 @@ if (YOLODET26_ENABLE_CPU)
 		ENVIRONMENT "PATH=${TEST_CPU_BUS_PATH};$ENV{PATH}"
 	)
 endif()
+
+# GPU 测试可执行文件：yolo26n.plan 识别 bus.jpg；运行需能加载 OpenCV/TensorRT/CUDA DLL
+if (YOLODET26_ENABLE_GPU)
+	add_executable(test_gpu_bus tests/test_gpu_bus.cpp)
+	target_include_directories(test_gpu_bus PRIVATE
+		${CMAKE_SOURCE_DIR}/src
+		${OpenCV_INCLUDE_DIRS}
+	)
+	target_link_libraries(test_gpu_bus PRIVATE YoloDet26 ${OpenCV_LIBS})
+	if (MSVC)
+		target_compile_options(test_gpu_bus PRIVATE /utf-8)
+	endif()
+	# 构建后复制 OpenCV DLL 到 exe 同目录，便于直接运行
+	if (OpenCV_DEPENDS_BIN)
+		add_custom_command(TARGET test_gpu_bus POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100.dll" "$<TARGET_FILE_DIR:test_gpu_bus>"
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100d.dll" "$<TARGET_FILE_DIR:test_gpu_bus>"
+			COMMENT "Copy OpenCV DLLs to test_gpu_bus output dir"
+		)
+	endif()
+	add_test(NAME test_gpu_bus COMMAND test_gpu_bus WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+	# 运行测试时 PATH 包含 OpenCV bin、TensorRT lib 和 CUDA bin
+	set(TEST_GPU_BUS_PATH "${TENSORRT_DIR}/lib")
+	if (OpenCV_DEPENDS_BIN)
+		set(TEST_GPU_BUS_PATH "${OpenCV_DEPENDS_BIN};${TEST_GPU_BUS_PATH}")
+	endif()
+	if (CUDAToolkit_BIN_DIR)
+		set(TEST_GPU_BUS_PATH "${CUDAToolkit_BIN_DIR};${TEST_GPU_BUS_PATH}")
+	elseif (DEFINED ENV{CUDA_PATH})
+		set(TEST_GPU_BUS_PATH "$ENV{CUDA_PATH}/bin;${TEST_GPU_BUS_PATH}")
+	endif()
+	set_tests_properties(test_gpu_bus PROPERTIES
+		ENVIRONMENT "PATH=${TEST_GPU_BUS_PATH};$ENV{PATH}"
+	)
+endif()

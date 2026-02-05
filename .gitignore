@@ -59,3 +59,5 @@ Desktop.ini
 *.bak
 *.orig
 bus_out.jpg
+bus_out_gpu.jpg
+build_engine.py
