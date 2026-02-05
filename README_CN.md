@@ -5,11 +5,11 @@
 
 [English](./README.md) | 简体中文
 
-高性能 YOLOv2.6 目标检测 C++ 推理库，采用自定义 TensorRT 实现，支持编译时选择 CPU/GPU 后端。
+高性能 YOLOv26 目标检测 C++ 推理库，采用自定义 TensorRT 实现，支持编译时选择 CPU/GPU 后端。
 
 ## 特性
 
-- **自定义 TensorRT 实现**：专为 YOLOv2.6 优化的 TensorRT 推理引擎，支持自定义算子和高效内存管理
+- **自定义 TensorRT 实现**：专为 YOLOv26 优化的 TensorRT 推理引擎，支持自定义算子和高效内存管理
 - **编译时后端选择**：CPU 和 GPU 后端在编译时完全隔离 —— 可任选 CPU (ONNX Runtime) 或 GPU (TensorRT/CUDA)，无需链接未使用的依赖
 - **高性能**：优化的推理引擎，开销极低，支持 GPU 加速
 
@@ -36,7 +36,7 @@
 
 #### 1. 导出 ONNX 模型（CPU 后端）
 
-使用 [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) 将 YOLOv2.6 模型导出为 ONNX 格式：
+使用 [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) 将 YOLOv26 模型导出为 ONNX 格式：
 
 ```bash
 yolo export model=yolo26n.pt format=onnx

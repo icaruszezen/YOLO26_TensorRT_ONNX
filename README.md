@@ -5,11 +5,11 @@
 
 English | [简体中文](./README_CN.md)
 
-A high-performance YOLOv2.6 object detection inference library for C++, featuring custom TensorRT implementation with compile-time selectable CPU/GPU backends.
+A high-performance YOLOv26 object detection inference library for C++, featuring custom TensorRT implementation with compile-time selectable CPU/GPU backends.
 
 ## Features
 
-- **Custom TensorRT Implementation**: Dedicated YOLOv2.6 inference engine optimized for TensorRT with custom layer support and efficient memory management
+- **Custom TensorRT Implementation**: Dedicated YOLOv26 inference engine optimized for TensorRT with custom layer support and efficient memory management
 - **Compile-Time Backend Selection**: CPU and GPU backends are completely isolated at compile time - choose either CPU (ONNX Runtime) or GPU (TensorRT/CUDA) without linking unused dependencies
 - **High Performance**: Optimized inference engine with minimal overhead and GPU acceleration
 
@@ -36,7 +36,7 @@ A high-performance YOLOv2.6 object detection inference library for C++, featurin
 
 #### 1. Export ONNX Model (for CPU backend)
 
-Use [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) to export the YOLOv2.6 model to ONNX format:
+Use [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) to export the YOLOv26 model to ONNX format:
 
 ```bash
 yolo export model=yolo26n.pt format=onnx
