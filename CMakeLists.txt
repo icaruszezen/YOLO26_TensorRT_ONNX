@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.17)
 
 project(YoloDet26 LANGUAGES CXX)
+enable_testing()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,8 +19,7 @@ endif()
 
 set(TENSORRT_DIR "" CACHE PATH "TensorRT root directory")
 set(ONNXRUNTIME_DIR "" CACHE PATH "ONNX Runtime root directory")
-
-# 尝试从环境变量自动填充路径，失败则提示人工输入
+# 尝试从环境变量自动填充路径，失败则使用 depends
 if (NOT TENSORRT_DIR)
 	if (DEFINED ENV{TENSORRT_DIR})
 		set(TENSORRT_DIR "$ENV{TENSORRT_DIR}" CACHE PATH "TensorRT root directory" FORCE)
@@ -33,10 +33,27 @@ if (NOT ONNXRUNTIME_DIR)
 		set(ONNXRUNTIME_DIR "$ENV{ONNXRUNTIME_DIR}" CACHE PATH "ONNX Runtime root directory" FORCE)
 	elseif (DEFINED ENV{ONNXRUNTIME_ROOT})
 		set(ONNXRUNTIME_DIR "$ENV{ONNXRUNTIME_ROOT}" CACHE PATH "ONNX Runtime root directory" FORCE)
+	else()
+		set(ONNXRUNTIME_DIR "${CMAKE_SOURCE_DIR}/depends/onnxruntime" CACHE PATH "ONNX Runtime root directory" FORCE)
 	endif()
 endif()
 
-find_package(OpenCV REQUIRED)
+# OpenCV：优先使用 depends 中的预构建（depends/opencv/build/x64/vc16）
+set(OPENCV_DEPENDS_ROOT "${CMAKE_SOURCE_DIR}/depends/opencv")
+set(OPENCV_VC16 "${OPENCV_DEPENDS_ROOT}/build/x64/vc16")
+find_library(OpenCV_LIB_RELEASE opencv_world4100 PATHS "${OPENCV_VC16}/lib" NO_DEFAULT_PATH)
+find_library(OpenCV_LIB_DEBUG   opencv_world4100d PATHS "${OPENCV_VC16}/lib" NO_DEFAULT_PATH)
+if (OpenCV_LIB_RELEASE)
+	set(OpenCV_INCLUDE_DIRS "${OPENCV_DEPENDS_ROOT}/build/include")
+	if (NOT OpenCV_LIB_DEBUG)
+		set(OpenCV_LIB_DEBUG "${OpenCV_LIB_RELEASE}")
+	endif()
+	set(OpenCV_LIBS optimized "${OpenCV_LIB_RELEASE}" debug "${OpenCV_LIB_DEBUG}")
+	set(OpenCV_DEPENDS_BIN "${OPENCV_VC16}/bin")
+else()
+	find_package(OpenCV REQUIRED)
+	set(OpenCV_DEPENDS_BIN "")
+endif()
 
 if (YOLODET26_ENABLE_GPU)
 	find_package(CUDAToolkit QUIET)
@@ -184,3 +201,38 @@ target_link_libraries(YoloDet26
 	PRIVATE
 		${YOLODET26_PRIVATE_LIBS}
 )
+
+# CPU 测试可执行文件：yolo26n.onnx 识别 bus.jpg；运行需能加载 depends 中的 OpenCV/ONNX DLL
+if (YOLODET26_ENABLE_CPU)
+	add_executable(test_cpu_bus tests/test_cpu_bus.cpp)
+	target_include_directories(test_cpu_bus PRIVATE
+		${CMAKE_SOURCE_DIR}/src
+		${OpenCV_INCLUDE_DIRS}
+	)
+	target_link_libraries(test_cpu_bus PRIVATE YoloDet26 ${OpenCV_LIBS})
+	if (MSVC)
+		target_compile_options(test_cpu_bus PRIVATE /utf-8)
+	endif()
+	# 构建后复制 OpenCV/ONNX Runtime DLL 到 exe 同目录，便于直接运行
+	add_custom_command(TARGET test_cpu_bus POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ONNXRUNTIME_DIR}/lib/onnxruntime_providers_shared.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
+		COMMENT "Copy ONNX Runtime DLLs to test_cpu_bus output dir"
+	)
+	if (OpenCV_DEPENDS_BIN)
+		add_custom_command(TARGET test_cpu_bus POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100d.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
+			COMMENT "Copy OpenCV DLLs to test_cpu_bus output dir"
+		)
+	endif()
+	add_test(NAME test_cpu_bus COMMAND test_cpu_bus WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+	# 运行测试时 PATH 包含 depends/opencv/build/x64/vc16/bin 与 depends/onnxruntime/lib
+	set(TEST_CPU_BUS_PATH "${ONNXRUNTIME_DIR}/lib")
+	if (OpenCV_DEPENDS_BIN)
+		set(TEST_CPU_BUS_PATH "${OpenCV_DEPENDS_BIN};${TEST_CPU_BUS_PATH}")
+	endif()
+	set_tests_properties(test_cpu_bus PROPERTIES
+		ENVIRONMENT "PATH=${TEST_CPU_BUS_PATH};$ENV{PATH}"
+	)
+endif()
