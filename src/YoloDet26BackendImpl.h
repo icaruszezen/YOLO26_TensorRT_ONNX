@@ -25,3 +25,7 @@ std::unique_ptr<YoloDetBackendImpl> CreateGpuBackend();
 #if defined(YOLODET26_ENABLE_CPU)
 std::unique_ptr<YoloDetBackendImpl> CreateCpuBackend();
 #endif
+
+#if defined(YOLODET26_ENABLE_OPENVINO)
+std::unique_ptr<YoloDetBackendImpl> CreateOpenVinoBackend();
+#endif

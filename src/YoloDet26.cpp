@@ -8,8 +8,8 @@
 #include <string>
 #include <utility>
 
-#if !defined(YOLODET26_ENABLE_CPU) && !defined(YOLODET26_ENABLE_GPU)
-#error "YOLODET26_ENABLE_CPU or YOLODET26_ENABLE_GPU must be defined."
+#if !defined(YOLODET26_ENABLE_CPU) && !defined(YOLODET26_ENABLE_GPU) && !defined(YOLODET26_ENABLE_OPENVINO)
+#error "YOLODET26_ENABLE_CPU, YOLODET26_ENABLE_GPU or YOLODET26_ENABLE_OPENVINO must be defined."
 #endif
 
 namespace {
@@ -61,6 +61,12 @@ YoloDet::YoloDet(std::string modelPath)
 	SetModel(std::move(modelPath));
 }
 
+YoloDet::YoloDet(std::string modelPath, YoloDetBackend backend)
+	: YoloDet()
+{
+	SetModel(std::move(modelPath), backend);
+}
+
 YoloDet::~YoloDet() = default;
 
 YoloDet::YoloDet(YoloDet&& other) noexcept = default;
@@ -70,6 +76,28 @@ int YoloDet::SetModel(std::string modelPath)
 {
 	const std::string lower = ToLower(modelPath);
 	if (EndsWith(lower, ".onnx")) {
+		return SetModel(std::move(modelPath), YoloDetBackend::CPU);
+	}
+
+	if (EndsWith(lower, ".plan") || EndsWith(lower, ".engine")) {
+		return SetModel(std::move(modelPath), YoloDetBackend::GPU);
+	}
+
+	std::cerr << "Error: Unsupported model format: " << modelPath << std::endl;
+	return -1;
+}
+
+int YoloDet::SetModel(std::string modelPath, YoloDetBackend backend)
+{
+	const std::string lower = ToLower(modelPath);
+
+	switch (backend) {
+	case YoloDetBackend::CPU:
+	{
+		if (!EndsWith(lower, ".onnx")) {
+			std::cerr << "Error: CPU backend requires .onnx model format." << std::endl;
+			return -1;
+		}
 #if defined(YOLODET26_ENABLE_CPU)
 		auto impl = CreateCpuBackend();
 		if (!impl) {
@@ -89,7 +117,12 @@ int YoloDet::SetModel(std::string modelPath)
 #endif
 	}
 
-	if (EndsWith(lower, ".plan") || EndsWith(lower, ".engine")) {
+	case YoloDetBackend::GPU: // YoloDetBackend::NVIDIA
+	{
+		if (!EndsWith(lower, ".plan") && !EndsWith(lower, ".engine")) {
+			std::cerr << "Error: NVIDIA backend requires .plan or .engine model format." << std::endl;
+			return -1;
+		}
 #if defined(YOLODET26_ENABLE_GPU)
 		auto impl = CreateGpuBackend();
 		if (!impl) {
@@ -109,8 +142,35 @@ int YoloDet::SetModel(std::string modelPath)
 #endif
 	}
 
-	std::cerr << "Error: Unsupported model format: " << modelPath << std::endl;
-	return -1;
+	case YoloDetBackend::INTEL:
+	{
+		if (!EndsWith(lower, ".onnx")) {
+			std::cerr << "Error: Intel (OpenVINO) backend requires .onnx model format." << std::endl;
+			return -1;
+		}
+#if defined(YOLODET26_ENABLE_OPENVINO)
+		auto impl = CreateOpenVinoBackend();
+		if (!impl) {
+			std::cerr << "Error: Failed to create OpenVINO backend." << std::endl;
+			return -1;
+		}
+		impl->SetConfThreshold(m_conf_threshold);
+		const int ret = impl->SetModel(modelPath);
+		if (ret == 0) {
+			m_impl = std::move(impl);
+			m_backend = YoloDetBackend::INTEL;
+		}
+		return ret;
+#else
+		std::cerr << "Error: OpenVINO backend not available in this build." << std::endl;
+		return -1;
+#endif
+	}
+
+	default:
+		std::cerr << "Error: Unknown backend type." << std::endl;
+		return -1;
+	}
 }
 
 int YoloDet::Inference(cv::Mat image, YoloDetResult& res)

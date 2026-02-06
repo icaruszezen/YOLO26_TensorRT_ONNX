@@ -38,7 +38,9 @@ struct YOLODET26_API YoloDetResult {
 
 enum class YoloDetBackend {
 	CPU = 0,
-	GPU = 1
+	GPU = 1,
+	NVIDIA = 1,
+	INTEL = 2
 };
 
 struct YOLODET26_API YoloDetResultEx {
@@ -69,6 +71,7 @@ class YoloDet
 public:
 	YoloDet();
 	YoloDet(std::string modelPath);
+	YoloDet(std::string modelPath, YoloDetBackend backend);
 	~YoloDet();
 
 	YoloDet(const YoloDet&) = delete;
@@ -78,6 +81,7 @@ public:
 	YoloDet& operator=(YoloDet&& other) noexcept;
 
 	int SetModel(std::string modelPath);
+	int SetModel(std::string modelPath, YoloDetBackend backend);
 	int Inference(cv::Mat image, YoloDetResult& res);
 	int Inference(cv::Mat image, YoloDetResultEx& res);
 	int Inference(tag_camera_data4det image, YoloDetResult& res);

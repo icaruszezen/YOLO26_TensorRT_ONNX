@@ -5,12 +5,14 @@
 
 [English](./README.md) | 简体中文
 
-高性能 YOLOv26 目标检测 C++ 推理库，采用自定义 TensorRT 实现，支持编译时选择 CPU/GPU 后端。
+高性能 YOLOv26 目标检测 C++ 推理库，采用自定义 TensorRT 实现，支持编译时选择 CPU/GPU/OpenVINO 后端。
 
 ## 特性
 
 - **自定义 TensorRT 实现**：专为 YOLOv26 优化的 TensorRT 推理引擎，支持自定义算子和高效内存管理
-- **编译时后端选择**：CPU 和 GPU 后端在编译时完全隔离 —— 可任选 CPU (ONNX Runtime) 或 GPU (TensorRT/CUDA)，无需链接未使用的依赖
+- **OpenVINO 支持**：通过 OpenVINO 实现 Intel 优化推理，直接加载 ONNX 模型，可在 Intel CPU/GPU/NPU 上加速执行
+- **编译时后端选择**：CPU、GPU 和 OpenVINO 后端在编译时完全隔离 —— 可任选 CPU (ONNX Runtime)、GPU (TensorRT/CUDA) 或 Intel (OpenVINO)，无需链接未使用的依赖
+- **运行时后端选择**：新增 `SetModel(path, backend)` API，可在运行时指定推理后端（CPU / NVIDIA / INTEL）
 - **高性能**：优化的推理引擎，开销极低，支持 GPU 加速
 
 ## 环境要求
@@ -25,10 +27,14 @@
 
 - ONNX Runtime 1.15+
 
-### GPU 后端
+### GPU 后端（NVIDIA）
 
 - CUDA 11.x / 12.x
 - TensorRT 8.x / 10.x
+
+### Intel 后端（OpenVINO）
+
+- OpenVINO 2023.0+
 
 ## 快速开始
 
@@ -57,13 +63,21 @@ trtexec --onnx=yolo26n.onnx --saveEngine=yolo26n.plan
 ### 编译
 
 ```bash
-# CPU 编译
+# CPU 编译（ONNX Runtime）
 mkdir build && cd build
 cmake .. -DYOLODET26_BACKEND=CPU
 
-# GPU 编译
+# GPU 编译（TensorRT/NVIDIA）
 mkdir build && cd build
 cmake .. -DYOLODET26_BACKEND=GPU
+
+# OpenVINO 编译（Intel）
+mkdir build && cd build
+cmake .. -DYOLODET26_BACKEND=OPENVINO
+
+# 全部后端
+mkdir build && cd build
+cmake .. -DYOLODET26_BACKEND=ALL
 
 # 构建
 cmake --build . --config Release
@@ -76,8 +90,19 @@ cmake --build . --config Release
 #include <opencv2/opencv.hpp>
 
 int main() {
-    // 加载检测器
-    YoloDet detector("model.onnx");
+    YoloDet detector;
+    
+    // 指定后端加载模型：
+    // YoloDetBackend::CPU    - ONNX Runtime（CPU）
+    // YoloDetBackend::NVIDIA - TensorRT（NVIDIA GPU）
+    // YoloDetBackend::INTEL  - OpenVINO（Intel CPU/GPU/NPU）
+    detector.SetModel("model.onnx", YoloDetBackend::CPU);
+    // 或: detector.SetModel("model.onnx", YoloDetBackend::INTEL);
+    // 或: detector.SetModel("model.plan", YoloDetBackend::NVIDIA);
+    
+    // 自动检测后端（向后兼容）：
+    // .onnx -> CPU, .plan/.engine -> GPU
+    // detector.SetModel("model.onnx");
     
     // 加载图像
     cv::Mat image = cv::imread("image.jpg");
@@ -112,8 +137,10 @@ int main() {
 | 方法 | 说明 |
 |------|------|
 | `YoloDet()` | 默认构造函数 |
-| `YoloDet(std::string modelPath)` | 带模型路径的构造函数 |
-| `int SetModel(std::string modelPath)` | 加载模型文件 |
+| `YoloDet(std::string modelPath)` | 带模型路径的构造函数（自动检测后端） |
+| `YoloDet(std::string modelPath, YoloDetBackend backend)` | 带模型路径和指定后端的构造函数 |
+| `int SetModel(std::string modelPath)` | 加载模型文件（自动检测后端） |
+| `int SetModel(std::string modelPath, YoloDetBackend backend)` | 加载模型并指定后端（CPU/NVIDIA/INTEL） |
 | `int Inference(cv::Mat image, YoloDetResult& res)` | 单图推理 |
 | `int Inference(cv::Mat image, YoloDetResultEx& res)` | 单图推理（含耗时信息）|
 | `int Inference(tag_camera_data4det image, ...)` | 原始缓冲区推理 |
@@ -137,8 +164,15 @@ int main() {
 - `classes`：类别索引
 - `scores`：置信度分数
 - `boxes`：边界框
-- `backend`：使用的后端（CPU/GPU）
+- `backend`：使用的后端（CPU/GPU/INTEL）
 - `infer_time_ms`：推理耗时（毫秒）
+
+#### `YoloDetBackend`
+
+后端枚举，用于选择推理引擎：
+- `CPU` (0)：ONNX Runtime CPU 推理
+- `GPU` / `NVIDIA` (1)：TensorRT NVIDIA GPU 推理
+- `INTEL` (2)：OpenVINO Intel 硬件推理
 
 ## 配置
 
@@ -146,9 +180,10 @@ int main() {
 
 | 选项 | 可选值 | 说明 |
 |------|--------|------|
-| `YOLODET26_BACKEND` | `CPU` / `GPU` | 选择推理后端 |
+| `YOLODET26_BACKEND` | `CPU` / `GPU` / `OPENVINO` / `BOTH` / `ALL` | 选择推理后端 |
 | `TENSORRT_DIR` | 路径 | TensorRT 根目录 |
 | `ONNXRUNTIME_DIR` | 路径 | ONNX Runtime 根目录 |
+| `OPENVINO_DIR` | 路径 | OpenVINO 根目录 |
 
 ### 环境变量
 
@@ -157,6 +192,7 @@ int main() {
 - `TENSORRT_DIR` / `TENSORRT_ROOT`
 - `ONNXRUNTIME_DIR` / `ONNXRUNTIME_ROOT`
 - `CUDA_PATH` / `CUDA_TOOLKIT_ROOT_DIR`
+- `OPENVINO_DIR` / `INTEL_OPENVINO_DIR`
 
 ## 测试
 
@@ -166,6 +202,9 @@ int main() {
 
 # 运行 GPU 测试（需要 yolo26n.plan 引擎）
 ./test_gpu_bus
+
+# 运行 OpenVINO 测试（需要 yolo26n.onnx 模型）
+./test_openvino_bus
 ```
 
 ## 目录结构
@@ -175,6 +214,7 @@ DetectHelperCPP/
 ├── src/              # 源代码
 │   ├── cpu/          # CPU 后端 (ONNX Runtime)
 │   ├── trt/          # GPU 后端 (TensorRT)
+│   ├── openvino/     # Intel 后端 (OpenVINO)
 │   └── *.h, *.cpp    # 核心 API 实现
 ├── tests/            # 测试程序
 ├── depends/          # 外部依赖（可选但推荐）
@@ -195,6 +235,11 @@ DetectHelperCPP/
 │   │       ├── nvinfer.dll
 │   │       ├── nvinfer_plugin.dll
 │   │       └── nvinfer_dispatch_10.dll (TensorRT 10+)
+│   ├── openvino/     # OpenVINO（Intel 后端）
+│   │   └── runtime/
+│   │       ├── include/
+│   │       ├── lib/
+│   │       └── bin/
 │   └── models/       # 测试模型和图像
 │       ├── yolo26n.onnx
 │       ├── yolo26n.plan

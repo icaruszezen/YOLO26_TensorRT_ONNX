@@ -5,12 +5,14 @@
 
 English | [简体中文](./README_CN.md)
 
-A high-performance YOLOv26 object detection inference library for C++, featuring custom TensorRT implementation with compile-time selectable CPU/GPU backends.
+A high-performance YOLOv26 object detection inference library for C++, featuring custom TensorRT implementation with compile-time selectable CPU/GPU/OpenVINO backends.
 
 ## Features
 
 - **Custom TensorRT Implementation**: Dedicated YOLOv26 inference engine optimized for TensorRT with custom layer support and efficient memory management
-- **Compile-Time Backend Selection**: CPU and GPU backends are completely isolated at compile time - choose either CPU (ONNX Runtime) or GPU (TensorRT/CUDA) without linking unused dependencies
+- **OpenVINO Support**: Intel-optimized inference via OpenVINO, loading ONNX models directly for accelerated execution on Intel CPUs/GPUs/NPUs
+- **Compile-Time Backend Selection**: CPU, GPU and OpenVINO backends are completely isolated at compile time - choose CPU (ONNX Runtime), GPU (TensorRT/CUDA) or Intel (OpenVINO) without linking unused dependencies
+- **Runtime Backend Selection**: New `SetModel(path, backend)` API allows specifying the inference backend (CPU / NVIDIA / INTEL) at runtime
 - **High Performance**: Optimized inference engine with minimal overhead and GPU acceleration
 
 ## Requirements
@@ -25,10 +27,14 @@ A high-performance YOLOv26 object detection inference library for C++, featuring
 
 - ONNX Runtime 1.15+
 
-### GPU Backend
+### GPU Backend (NVIDIA)
 
 - CUDA 11.x / 12.x
 - TensorRT 8.x / 10.x
+
+### Intel Backend (OpenVINO)
+
+- OpenVINO 2023.0+
 
 ## Quick Start
 
@@ -57,13 +63,21 @@ The exported `yolo26n.plan` file is used for GPU inference with TensorRT.
 ### Build
 
 ```bash
-# CPU build
+# CPU build (ONNX Runtime)
 mkdir build && cd build
 cmake .. -DYOLODET26_BACKEND=CPU
 
-# GPU build
+# GPU build (TensorRT/NVIDIA)
 mkdir build && cd build
 cmake .. -DYOLODET26_BACKEND=GPU
+
+# OpenVINO build (Intel)
+mkdir build && cd build
+cmake .. -DYOLODET26_BACKEND=OPENVINO
+
+# All backends
+mkdir build && cd build
+cmake .. -DYOLODET26_BACKEND=ALL
 
 # Build
 cmake --build . --config Release
@@ -76,8 +90,19 @@ cmake --build . --config Release
 #include <opencv2/opencv.hpp>
 
 int main() {
-    // Load detector
-    YoloDet detector("model.onnx");
+    YoloDet detector;
+    
+    // Load model with explicit backend selection:
+    // YoloDetBackend::CPU    - ONNX Runtime (CPU)
+    // YoloDetBackend::NVIDIA - TensorRT (NVIDIA GPU)
+    // YoloDetBackend::INTEL  - OpenVINO (Intel CPU/GPU/NPU)
+    detector.SetModel("model.onnx", YoloDetBackend::CPU);
+    // or: detector.SetModel("model.onnx", YoloDetBackend::INTEL);
+    // or: detector.SetModel("model.plan", YoloDetBackend::NVIDIA);
+    
+    // Auto-detect backend (backward compatible):
+    // .onnx -> CPU, .plan/.engine -> GPU
+    // detector.SetModel("model.onnx");
     
     // Load image
     cv::Mat image = cv::imread("image.jpg");
@@ -112,8 +137,10 @@ Main detector class.
 | Method | Description |
 |--------|-------------|
 | `YoloDet()` | Default constructor |
-| `YoloDet(std::string modelPath)` | Construct with model path |
-| `int SetModel(std::string modelPath)` | Load model file |
+| `YoloDet(std::string modelPath)` | Construct with model path (auto-detect backend) |
+| `YoloDet(std::string modelPath, YoloDetBackend backend)` | Construct with model path and explicit backend |
+| `int SetModel(std::string modelPath)` | Load model file (auto-detect backend) |
+| `int SetModel(std::string modelPath, YoloDetBackend backend)` | Load model with explicit backend (CPU/NVIDIA/INTEL) |
 | `int Inference(cv::Mat image, YoloDetResult& res)` | Single image inference |
 | `int Inference(cv::Mat image, YoloDetResultEx& res)` | Single image inference with timing |
 | `int Inference(tag_camera_data4det image, ...)` | Raw buffer inference |
@@ -137,8 +164,15 @@ Extended result with timing info:
 - `classes`: Class indices
 - `scores`: Confidence scores
 - `boxes`: Bounding boxes
-- `backend`: Used backend (CPU/GPU)
+- `backend`: Used backend (CPU/GPU/INTEL)
 - `infer_time_ms`: Inference time in milliseconds
+
+#### `YoloDetBackend`
+
+Backend enum for selecting inference engine:
+- `CPU` (0): ONNX Runtime on CPU
+- `GPU` / `NVIDIA` (1): TensorRT on NVIDIA GPU
+- `INTEL` (2): OpenVINO on Intel hardware
 
 ## Configuration
 
@@ -146,9 +180,10 @@ Extended result with timing info:
 
 | Option | Values | Description |
 |--------|--------|-------------|
-| `YOLODET26_BACKEND` | `CPU` / `GPU` | Select inference backend |
+| `YOLODET26_BACKEND` | `CPU` / `GPU` / `OPENVINO` / `BOTH` / `ALL` | Select inference backend(s) |
 | `TENSORRT_DIR` | Path | TensorRT root directory |
 | `ONNXRUNTIME_DIR` | Path | ONNX Runtime root directory |
+| `OPENVINO_DIR` | Path | OpenVINO root directory |
 
 ### Environment Variables
 
@@ -157,6 +192,7 @@ The build system automatically detects these environment variables:
 - `TENSORRT_DIR` / `TENSORRT_ROOT`
 - `ONNXRUNTIME_DIR` / `ONNXRUNTIME_ROOT`
 - `CUDA_PATH` / `CUDA_TOOLKIT_ROOT_DIR`
+- `OPENVINO_DIR` / `INTEL_OPENVINO_DIR`
 
 ## Testing
 
@@ -166,6 +202,9 @@ The build system automatically detects these environment variables:
 
 # Run GPU test (requires yolo26n.plan engine)
 ./test_gpu_bus
+
+# Run OpenVINO test (requires yolo26n.onnx model)
+./test_openvino_bus
 ```
 
 ## Directory Structure
@@ -175,6 +214,7 @@ DetectHelperCPP/
 ├── src/              # Source code
 │   ├── cpu/          # CPU backend (ONNX Runtime)
 │   ├── trt/          # GPU backend (TensorRT)
+│   ├── openvino/     # Intel backend (OpenVINO)
 │   └── *.h, *.cpp    # Core API implementation
 ├── tests/            # Test programs
 ├── depends/          # External dependencies (optional but recommended)
@@ -195,6 +235,11 @@ DetectHelperCPP/
 │   │       ├── nvinfer.dll
 │   │       ├── nvinfer_plugin.dll
 │   │       └── nvinfer_dispatch_10.dll (TensorRT 10+)
+│   ├── openvino/     # OpenVINO for Intel backend
+│   │   └── runtime/
+│   │       ├── include/
+│   │       ├── lib/
+│   │       └── bin/
 │   └── models/       # Test models and images
 │       ├── yolo26n.onnx
 │       ├── yolo26n.plan

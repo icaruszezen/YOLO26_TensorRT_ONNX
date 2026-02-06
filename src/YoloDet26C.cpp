@@ -120,13 +120,13 @@ void YOLODET26_CALL YoloDet26_Destroy(YoloDet26Handle handle)
 	delete GetHandle(handle);
 }
 
-int YOLODET26_CALL YoloDet26_SetModel(YoloDet26Handle handle, const char* model_path)
+int YOLODET26_CALL YoloDet26_SetModel(YoloDet26Handle handle, const char* model_path, int backend)
 {
 	if (!handle || !model_path) {
 		return -1;
 	}
 	try {
-		return GetHandle(handle)->SetModel(model_path);
+		return GetHandle(handle)->SetModel(model_path, static_cast<YoloDetBackend>(backend));
 	}
 	catch (...) {
 		return -1;

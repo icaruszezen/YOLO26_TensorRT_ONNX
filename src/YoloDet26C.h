@@ -39,7 +39,9 @@ typedef struct YoloDet26Image {
 
 typedef enum YoloDet26Backend {
 	YOLODET26_BACKEND_CPU = 0,
-	YOLODET26_BACKEND_GPU = 1
+	YOLODET26_BACKEND_GPU = 1,
+	YOLODET26_BACKEND_NVIDIA = 1,
+	YOLODET26_BACKEND_INTEL = 2
 } YoloDet26Backend;
 
 typedef struct YoloDet26Result {
@@ -55,7 +57,7 @@ typedef struct YoloDet26Result {
 // Return: 0 success, 1 truncated, <0 error.
 YOLODET26_API YoloDet26Handle YOLODET26_CALL YoloDet26_Create();
 YOLODET26_API void YOLODET26_CALL YoloDet26_Destroy(YoloDet26Handle handle);
-YOLODET26_API int YOLODET26_CALL YoloDet26_SetModel(YoloDet26Handle handle, const char* model_path);
+YOLODET26_API int YOLODET26_CALL YoloDet26_SetModel(YoloDet26Handle handle, const char* model_path, int backend);
 YOLODET26_API int YOLODET26_CALL YoloDet26_Inference(YoloDet26Handle handle, const YoloDet26Image* image, YoloDet26Result* result);
 YOLODET26_API int YOLODET26_CALL YoloDet26_IsModelLoaded(YoloDet26Handle handle);
 YOLODET26_API void YOLODET26_CALL YoloDet26_SetConfThreshold(YoloDet26Handle handle, float threshold);
