@@ -6,10 +6,16 @@
 #include <vector>
 #include <string>
 
-#ifdef YOLODET26_EXPORTS
-#define YOLODET26_API __declspec(dllexport)
+#if defined(_WIN32)
+	#ifdef YOLODET26_EXPORTS
+		#define YOLODET26_API __declspec(dllexport)
+	#else
+		#define YOLODET26_API __declspec(dllimport)
+	#endif
+#elif defined(__GNUC__) || defined(__clang__)
+	#define YOLODET26_API __attribute__((visibility("default")))
 #else
-#define YOLODET26_API __declspec(dllimport)
+	#define YOLODET26_API
 #endif
 
 struct YOLODET26_API DetBox {
@@ -62,11 +68,7 @@ struct YOLODET26_API tag_camera_data4det
 
 class YoloDetBackendImpl;
 
-#ifdef _WIN32
 class YOLODET26_API YoloDet
-#else
-class YoloDet
-#endif
 {
 public:
 	YoloDet();

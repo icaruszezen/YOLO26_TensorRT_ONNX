@@ -70,20 +70,25 @@ if (NOT OPENVINO_DIR)
 	endif()
 endif()
 
-# OpenCV：优先使用 depends 中的预构建（depends/opencv/build/x64/vc16）
-set(OPENCV_DEPENDS_ROOT "${CMAKE_SOURCE_DIR}/depends/opencv")
-set(OPENCV_VC16 "${OPENCV_DEPENDS_ROOT}/build/x64/vc16")
-find_library(OpenCV_LIB_RELEASE opencv_world4100 PATHS "${OPENCV_VC16}/lib" NO_DEFAULT_PATH)
-find_library(OpenCV_LIB_DEBUG   opencv_world4100d PATHS "${OPENCV_VC16}/lib" NO_DEFAULT_PATH)
-if (OpenCV_LIB_RELEASE)
-	set(OpenCV_INCLUDE_DIRS "${OPENCV_DEPENDS_ROOT}/build/include")
-	if (NOT OpenCV_LIB_DEBUG)
-		set(OpenCV_LIB_DEBUG "${OpenCV_LIB_RELEASE}")
+# OpenCV：Windows 优先使用 depends 中的预构建 world 库；Linux 查找分散的组件库
+if (WIN32)
+	set(OPENCV_DEPENDS_ROOT "${CMAKE_SOURCE_DIR}/depends/opencv")
+	set(OPENCV_VC16 "${OPENCV_DEPENDS_ROOT}/build/x64/vc16")
+	find_library(OpenCV_LIB_RELEASE opencv_world4100 PATHS "${OPENCV_VC16}/lib" NO_DEFAULT_PATH)
+	find_library(OpenCV_LIB_DEBUG   opencv_world4100d PATHS "${OPENCV_VC16}/lib" NO_DEFAULT_PATH)
+	if (OpenCV_LIB_RELEASE)
+		set(OpenCV_INCLUDE_DIRS "${OPENCV_DEPENDS_ROOT}/build/include")
+		if (NOT OpenCV_LIB_DEBUG)
+			set(OpenCV_LIB_DEBUG "${OpenCV_LIB_RELEASE}")
+		endif()
+		set(OpenCV_LIBS optimized "${OpenCV_LIB_RELEASE}" debug "${OpenCV_LIB_DEBUG}")
+		set(OpenCV_DEPENDS_BIN "${OPENCV_VC16}/bin")
+	else()
+		find_package(OpenCV REQUIRED)
+		set(OpenCV_DEPENDS_BIN "")
 	endif()
-	set(OpenCV_LIBS optimized "${OpenCV_LIB_RELEASE}" debug "${OpenCV_LIB_DEBUG}")
-	set(OpenCV_DEPENDS_BIN "${OPENCV_VC16}/bin")
 else()
-	find_package(OpenCV REQUIRED)
+	find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs dnn)
 	set(OpenCV_DEPENDS_BIN "")
 endif()
 
@@ -241,6 +246,9 @@ if (YOLODET26_ENABLE_OPENVINO)
 endif()
 if (MSVC)
 	target_compile_options(YoloDet26 PRIVATE /utf-8)
+else()
+	target_compile_options(YoloDet26 PRIVATE -fvisibility=hidden)
+	set_target_properties(YoloDet26 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
 set(YOLODET26_PRIVATE_INCLUDE_DIRS
@@ -302,28 +310,40 @@ if (YOLODET26_ENABLE_CPU)
 	if (MSVC)
 		target_compile_options(test_cpu_bus PRIVATE /utf-8)
 	endif()
-	# 构建后复制 OpenCV/ONNX Runtime DLL 到 exe 同目录，便于直接运行
-	add_custom_command(TARGET test_cpu_bus POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ONNXRUNTIME_DIR}/lib/onnxruntime_providers_shared.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
-		COMMENT "Copy ONNX Runtime DLLs to test_cpu_bus output dir"
-	)
-	if (OpenCV_DEPENDS_BIN)
+	# 构建后复制 OpenCV/ONNX Runtime DLL 到 exe 同目录，便于直接运行（仅 Windows）
+	if (WIN32)
 		add_custom_command(TARGET test_cpu_bus POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
-			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100d.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
-			COMMENT "Copy OpenCV DLLs to test_cpu_bus output dir"
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ONNXRUNTIME_DIR}/lib/onnxruntime_providers_shared.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
+			COMMENT "Copy ONNX Runtime DLLs to test_cpu_bus output dir"
 		)
+		if (OpenCV_DEPENDS_BIN)
+			add_custom_command(TARGET test_cpu_bus POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100d.dll" "$<TARGET_FILE_DIR:test_cpu_bus>"
+				COMMENT "Copy OpenCV DLLs to test_cpu_bus output dir"
+			)
+		endif()
 	endif()
 	add_test(NAME test_cpu_bus COMMAND test_cpu_bus WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-	# 运行测试时 PATH 包含 depends/opencv/build/x64/vc16/bin 与 depends/onnxruntime/lib
+	# 运行测试时设置库搜索路径（Windows: PATH；Linux: LD_LIBRARY_PATH）
 	set(TEST_CPU_BUS_PATH "${ONNXRUNTIME_DIR}/lib")
 	if (OpenCV_DEPENDS_BIN)
-		set(TEST_CPU_BUS_PATH "${OpenCV_DEPENDS_BIN};${TEST_CPU_BUS_PATH}")
+		if (WIN32)
+			set(TEST_CPU_BUS_PATH "${OpenCV_DEPENDS_BIN};${TEST_CPU_BUS_PATH}")
+		else()
+			set(TEST_CPU_BUS_PATH "${OpenCV_DEPENDS_BIN}:${TEST_CPU_BUS_PATH}")
+		endif()
 	endif()
-	set_tests_properties(test_cpu_bus PROPERTIES
-		ENVIRONMENT "PATH=${TEST_CPU_BUS_PATH};$ENV{PATH}"
-	)
+	if (WIN32)
+		set_tests_properties(test_cpu_bus PROPERTIES
+			ENVIRONMENT "PATH=${TEST_CPU_BUS_PATH};$ENV{PATH}"
+		)
+	else()
+		set_tests_properties(test_cpu_bus PROPERTIES
+			ENVIRONMENT "LD_LIBRARY_PATH=${TEST_CPU_BUS_PATH}:$ENV{LD_LIBRARY_PATH}"
+		)
+	endif()
 endif()
 
 # GPU 测试可执行文件：yolo26n.plan 识别 bus.jpg；运行需能加载 OpenCV/TensorRT/CUDA DLL
@@ -337,8 +357,8 @@ if (YOLODET26_ENABLE_GPU)
 	if (MSVC)
 		target_compile_options(test_gpu_bus PRIVATE /utf-8)
 	endif()
-	# 构建后复制 OpenCV DLL 到 exe 同目录，便于直接运行
-	if (OpenCV_DEPENDS_BIN)
+	# 构建后复制 OpenCV DLL 到 exe 同目录，便于直接运行（仅 Windows）
+	if (WIN32 AND OpenCV_DEPENDS_BIN)
 		add_custom_command(TARGET test_gpu_bus POST_BUILD
 			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100.dll" "$<TARGET_FILE_DIR:test_gpu_bus>"
 			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100d.dll" "$<TARGET_FILE_DIR:test_gpu_bus>"
@@ -346,19 +366,30 @@ if (YOLODET26_ENABLE_GPU)
 		)
 	endif()
 	add_test(NAME test_gpu_bus COMMAND test_gpu_bus WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-	# 运行测试时 PATH 包含 OpenCV bin、TensorRT lib 和 CUDA bin
+	# 运行测试时设置库搜索路径（Windows: PATH；Linux: LD_LIBRARY_PATH）
 	set(TEST_GPU_BUS_PATH "${TENSORRT_DIR}/lib")
-	if (OpenCV_DEPENDS_BIN)
-		set(TEST_GPU_BUS_PATH "${OpenCV_DEPENDS_BIN};${TEST_GPU_BUS_PATH}")
+	if (WIN32)
+		if (OpenCV_DEPENDS_BIN)
+			set(TEST_GPU_BUS_PATH "${OpenCV_DEPENDS_BIN};${TEST_GPU_BUS_PATH}")
+		endif()
+		if (CUDAToolkit_BIN_DIR)
+			set(TEST_GPU_BUS_PATH "${CUDAToolkit_BIN_DIR};${TEST_GPU_BUS_PATH}")
+		elseif (DEFINED ENV{CUDA_PATH})
+			set(TEST_GPU_BUS_PATH "$ENV{CUDA_PATH}/bin;${TEST_GPU_BUS_PATH}")
+		endif()
+		set_tests_properties(test_gpu_bus PROPERTIES
+			ENVIRONMENT "PATH=${TEST_GPU_BUS_PATH};$ENV{PATH}"
+		)
+	else()
+		if (CUDAToolkit_BIN_DIR)
+			set(TEST_GPU_BUS_PATH "${CUDAToolkit_BIN_DIR}:${TEST_GPU_BUS_PATH}")
+		elseif (DEFINED ENV{CUDA_PATH})
+			set(TEST_GPU_BUS_PATH "$ENV{CUDA_PATH}/lib64:${TEST_GPU_BUS_PATH}")
+		endif()
+		set_tests_properties(test_gpu_bus PROPERTIES
+			ENVIRONMENT "LD_LIBRARY_PATH=${TEST_GPU_BUS_PATH}:$ENV{LD_LIBRARY_PATH}"
+		)
 	endif()
-	if (CUDAToolkit_BIN_DIR)
-		set(TEST_GPU_BUS_PATH "${CUDAToolkit_BIN_DIR};${TEST_GPU_BUS_PATH}")
-	elseif (DEFINED ENV{CUDA_PATH})
-		set(TEST_GPU_BUS_PATH "$ENV{CUDA_PATH}/bin;${TEST_GPU_BUS_PATH}")
-	endif()
-	set_tests_properties(test_gpu_bus PROPERTIES
-		ENVIRONMENT "PATH=${TEST_GPU_BUS_PATH};$ENV{PATH}"
-	)
 endif()
 
 # OpenVINO 测试可执行文件：yolo26n.onnx 识别 bus.jpg；运行需能加载 OpenCV/OpenVINO DLL
@@ -372,38 +403,60 @@ if (YOLODET26_ENABLE_OPENVINO)
 	if (MSVC)
 		target_compile_options(test_openvino_bus PRIVATE /utf-8)
 	endif()
-	# 构建后复制 OpenVINO DLL 到 exe 同目录，便于直接运行
-	set(OPENVINO_BIN_DIR "")
-	if (EXISTS "${OPENVINO_DIR}/runtime/bin/intel64/Release")
-		set(OPENVINO_BIN_DIR "${OPENVINO_DIR}/runtime/bin/intel64/Release")
-	elseif (EXISTS "${OPENVINO_DIR}/runtime/bin/intel64")
-		set(OPENVINO_BIN_DIR "${OPENVINO_DIR}/runtime/bin/intel64")
-	elseif (EXISTS "${OPENVINO_DIR}/bin")
-		set(OPENVINO_BIN_DIR "${OPENVINO_DIR}/bin")
-	endif()
-	if (OPENVINO_BIN_DIR)
-		add_custom_command(TARGET test_openvino_bus POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E copy_directory "${OPENVINO_BIN_DIR}" "$<TARGET_FILE_DIR:test_openvino_bus>"
-			COMMENT "Copy OpenVINO DLLs to test_openvino_bus output dir"
-		)
-	endif()
-	if (OpenCV_DEPENDS_BIN)
-		add_custom_command(TARGET test_openvino_bus POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100.dll" "$<TARGET_FILE_DIR:test_openvino_bus>"
-			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100d.dll" "$<TARGET_FILE_DIR:test_openvino_bus>"
-			COMMENT "Copy OpenCV DLLs to test_openvino_bus output dir"
-		)
+	# 构建后复制 OpenVINO/OpenCV DLL 到 exe 同目录，便于直接运行（仅 Windows）
+	if (WIN32)
+		set(OPENVINO_BIN_DIR "")
+		if (EXISTS "${OPENVINO_DIR}/runtime/bin/intel64/Release")
+			set(OPENVINO_BIN_DIR "${OPENVINO_DIR}/runtime/bin/intel64/Release")
+		elseif (EXISTS "${OPENVINO_DIR}/runtime/bin/intel64")
+			set(OPENVINO_BIN_DIR "${OPENVINO_DIR}/runtime/bin/intel64")
+		elseif (EXISTS "${OPENVINO_DIR}/bin")
+			set(OPENVINO_BIN_DIR "${OPENVINO_DIR}/bin")
+		endif()
+		if (OPENVINO_BIN_DIR)
+			add_custom_command(TARGET test_openvino_bus POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E copy_directory "${OPENVINO_BIN_DIR}" "$<TARGET_FILE_DIR:test_openvino_bus>"
+				COMMENT "Copy OpenVINO DLLs to test_openvino_bus output dir"
+			)
+		endif()
+		if (OpenCV_DEPENDS_BIN)
+			add_custom_command(TARGET test_openvino_bus POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100.dll" "$<TARGET_FILE_DIR:test_openvino_bus>"
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OpenCV_DEPENDS_BIN}/opencv_world4100d.dll" "$<TARGET_FILE_DIR:test_openvino_bus>"
+				COMMENT "Copy OpenCV DLLs to test_openvino_bus output dir"
+			)
+		endif()
 	endif()
 	add_test(NAME test_openvino_bus COMMAND test_openvino_bus WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-	# 运行测试时 PATH 包含 OpenCV bin 和 OpenVINO bin
+	# 运行测试时设置库搜索路径（Windows: PATH；Linux: LD_LIBRARY_PATH）
 	set(TEST_OPENVINO_BUS_PATH "")
-	if (OPENVINO_BIN_DIR)
-		set(TEST_OPENVINO_BUS_PATH "${OPENVINO_BIN_DIR}")
+	if (WIN32)
+		set(OPENVINO_RT_LIB_DIR "")
+		if (OPENVINO_BIN_DIR)
+			set(OPENVINO_RT_LIB_DIR "${OPENVINO_BIN_DIR}")
+		endif()
+		if (OPENVINO_RT_LIB_DIR)
+			set(TEST_OPENVINO_BUS_PATH "${OPENVINO_RT_LIB_DIR}")
+		endif()
+		if (OpenCV_DEPENDS_BIN)
+			set(TEST_OPENVINO_BUS_PATH "${OpenCV_DEPENDS_BIN};${TEST_OPENVINO_BUS_PATH}")
+		endif()
+		set_tests_properties(test_openvino_bus PROPERTIES
+			ENVIRONMENT "PATH=${TEST_OPENVINO_BUS_PATH};$ENV{PATH}"
+		)
+	else()
+		# Linux: OpenVINO 库通常在 runtime/lib/intel64
+		set(OPENVINO_RT_LIB_DIR "")
+		if (EXISTS "${OPENVINO_DIR}/runtime/lib/intel64")
+			set(OPENVINO_RT_LIB_DIR "${OPENVINO_DIR}/runtime/lib/intel64")
+		elseif (EXISTS "${OPENVINO_DIR}/lib")
+			set(OPENVINO_RT_LIB_DIR "${OPENVINO_DIR}/lib")
+		endif()
+		if (OPENVINO_RT_LIB_DIR)
+			set(TEST_OPENVINO_BUS_PATH "${OPENVINO_RT_LIB_DIR}")
+		endif()
+		set_tests_properties(test_openvino_bus PROPERTIES
+			ENVIRONMENT "LD_LIBRARY_PATH=${TEST_OPENVINO_BUS_PATH}:$ENV{LD_LIBRARY_PATH}"
+		)
 	endif()
-	if (OpenCV_DEPENDS_BIN)
-		set(TEST_OPENVINO_BUS_PATH "${OpenCV_DEPENDS_BIN};${TEST_OPENVINO_BUS_PATH}")
-	endif()
-	set_tests_properties(test_openvino_bus PROPERTIES
-		ENVIRONMENT "PATH=${TEST_OPENVINO_BUS_PATH};$ENV{PATH}"
-	)
 endif()
